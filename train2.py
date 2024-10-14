@@ -12,8 +12,7 @@ from models.vit import VisionTransformer
 from models.performer_relu import PerformerReLUTransformer
 from models.performer_exp import PerformerExpTransformer
 from models.performer_f_theta import PerformerLearnableTransformer
-
-# Import utility functions
+import pickle
 from utils import set_seed, log_results
 
 def main():
@@ -201,14 +200,22 @@ def train_model(model, optimizer, scheduler, model_name, start_epoch=0, best_val
     criterion = nn.CrossEntropyLoss()
 
     
-    num_epochs = 5
+    num_epochs = 10
     training_times = []
     inference_times = []
+
+    # Initialize lists to store metrics
+    train_losses = []
+    val_losses = []
+    train_accuracies = []
+    val_accuracies = []
 
     for epoch in range(start_epoch, num_epochs):
         start_time = time.time()
         model.train()
         running_loss = 0
+        correct_train = 0
+        total_train = 0
 
         for images, labels in tqdm(train_loader, desc=f"{model_name} Epoch {epoch+1}/{num_epochs}", leave=False):
             images = images.to(device)
@@ -221,12 +228,21 @@ def train_model(model, optimizer, scheduler, model_name, start_epoch=0, best_val
             optimizer.step()
 
             running_loss += loss.item() * images.size(0)
+            _, predicted = outputs.max(1)
+            total_train += labels.size(0)
+            correct_train += predicted.eq(labels).sum().item()
 
         epoch_time = time.time() - start_time
         training_times.append(epoch_time)
 
+        train_loss = running_loss / len(train_loader.dataset)
+        train_accuracy = 100. * correct_train / total_train
+        train_losses.append(train_loss)
+        train_accuracies.append(train_accuracy)
+
         # Validation
         model.eval()
+        running_val_loss = 0
         correct = 0
         total = 0
         inference_start = time.time()
@@ -236,6 +252,8 @@ def train_model(model, optimizer, scheduler, model_name, start_epoch=0, best_val
                 images = images.to(device)
                 labels = labels.to(device)
                 outputs = model(images)
+                loss = criterion(outputs, labels)
+                running_val_loss += loss.item() * images.size(0)
                 _, predicted = outputs.max(1)
                 total += labels.size(0)
                 correct += predicted.eq(labels).sum().item()
@@ -243,12 +261,18 @@ def train_model(model, optimizer, scheduler, model_name, start_epoch=0, best_val
         inference_time = time.time() - inference_start
         inference_times.append(inference_time)
 
+        val_loss = running_val_loss / len(test_loader.dataset)
         val_accuracy = 100. * correct / total
+        val_losses.append(val_loss)
+        val_accuracies.append(val_accuracy)
+
         print(f"{model_name} Epoch [{epoch+1}/{num_epochs}] "
-            f"Loss: {running_loss / len(train_loader.dataset):.4f} "
-            f"Val Accuracy: {val_accuracy:.2f}% "
-            f"Training Time: {epoch_time:.2f}s "
-            f"Inference Time: {inference_time:.2f}s")
+              f"Train Loss: {train_loss:.4f} "
+              f"Val Loss: {val_loss:.4f} "
+              f"Train Acc: {train_accuracy:.2f}% "
+              f"Val Acc: {val_accuracy:.2f}% "
+              f"Train Time: {epoch_time:.2f}s "
+              f"Infer Time: {inference_time:.2f}s")
 
         # Update scheduler
         scheduler.step()
@@ -263,12 +287,20 @@ def train_model(model, optimizer, scheduler, model_name, start_epoch=0, best_val
                 'scheduler_state_dict': scheduler.state_dict(),
                 'best_val_accuracy': best_val_accuracy,
             }
-            print(f"Epoch [{epoch+1}/{num_epochs}], "
-                f"Saving checkpoint for {model_name} with best validation accuracy {best_val_accuracy:.2f}%")
             torch.save(checkpoint, f'best_{model_name}.pth')
 
     # Log results
     log_results(model_name, training_times, inference_times, best_val_accuracy)
+
+    # Save metrics for visualization
+    metrics = {
+        'train_losses': train_losses,
+        'val_losses': val_losses,
+        'train_accuracies': train_accuracies,
+        'val_accuracies': val_accuracies
+    }
+    with open(f'{model_name}_metrics.pkl', 'wb') as f:
+        pickle.dump(metrics, f)
 
 if __name__ == "__main__":
     main()

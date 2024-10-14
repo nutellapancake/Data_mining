@@ -3,6 +3,8 @@ import numpy as np
 import torch
 import csv
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 def set_seed(seed=42):
     random.seed(seed)
     np.random.seed(seed)
@@ -22,3 +24,23 @@ def log_results(model_name, training_times, inference_times, accuracy):
             'Total Inference Time': sum(inference_times),
             'Accuracy': accuracy
         })
+
+def load_model(model_class, checkpoint_path):
+    model = model_class(
+        img_size=32,
+        patch_size=4,
+        in_channels=3,
+        num_classes=10,
+        embed_dim=256,
+        num_heads=8,
+        hidden_dim=512,
+        num_layers=6,
+        dropout=0.1
+    ).to(device)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+    if 'model_state_dict' in checkpoint:
+        model.load_state_dict(checkpoint['model_state_dict'])
+    else:
+        model.load_state_dict(checkpoint)
+    model.eval()
+    return model
