@@ -2,6 +2,7 @@ import random
 import numpy as np
 import torch
 import csv
+import os
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -14,10 +15,15 @@ def set_seed(seed=42):
     torch.backends.cudnn.benchmark = False
 
 def log_results(model_name, training_times, inference_times, accuracy):
+    file_exists = os.path.isfile('results.csv')
     with open('results.csv', 'a', newline='') as csvfile:
         fieldnames = ['Model', 'Total Training Time', 'Total Inference Time', 'Accuracy']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
+        writer = csv.DictWriter(csvfile, fieldnamesfieldnames=fieldnames)
+        
+        # Write header only if file does not exist or is empty
+        if not file_exists or os.stat('results.csv').st_size == 0:
+            writer.writeheader()
+        
         writer.writerow({
             'Model': model_name,
             'Total Training Time': sum(training_times),
